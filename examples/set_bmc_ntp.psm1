@@ -121,37 +121,29 @@ function set_bmc_ntp
             $response = Invoke-WebRequest -Uri $uri_address_manager -Headers $JsonHeader -Method Get -UseBasicParsing
             
             $converted_object = $response.Content | ConvertFrom-Json
+            $etag = $converted_object."@odata.etag"
             $uri_network ="https://$ip"+$converted_object.NetworkProtocol.'@odata.id'
             $parameter = @{"NTPServers"=$ntp_server; "ProtocolEnabled"=[bool]$enabled}
-            
+
+            if($etag -ne $null)
+            {
+                $JsonHeader = @{ "If-Match" = "*"
+                            "X-Auth-Token" = $session_key
+                }
+            }
+            else
+            {
+                $JsonHeader = @{ "If-Match" = ""
+                            "X-Auth-Token" = $session_key
+                }
+            }
+
             # Build request body and send requests to set bmc ntp
             $body = @{"NTP"=$parameter}
             $json_body = $body | convertto-json
-            try
-            {
-                $response = Invoke-WebRequest -Uri $uri_network -Headers $JsonHeader -Method Patch  -Body $json_body -ContentType 'application/json'
-            }
-            catch
-            {   
-                # Handle http exception response for Post request
-                if ($_.Exception.Response)
-                {
-                    Write-Host "Error occured, status code:" $_.Exception.Response.StatusCode.Value__
-                    if($_.ErrorDetails.Message)
-                    {
-                        $response_j = $_.ErrorDetails.Message | ConvertFrom-Json | Select-Object -Expand error
-                        $response_j = $response_j | Select-Object -Expand '@Message.ExtendedInfo'
-                        Write-Host "Error message:" $response_j.Resolution
-                    }
-                }
-                # Handle system exception response for Post request
-                elseif($_.Exception)
-                {
-                    Write-Host "Error message:" $_.Exception.Message
-                    Write-Host "Please check arguments or server status."
-                }
-                return $False
-            }
+
+            $response = Invoke-WebRequest -Uri $uri_network -Headers $JsonHeader -Method Patch  -Body $json_body -ContentType 'application/json'
+
             Write-Host
             [String]::Format("- PASS, statuscode {0} returned successfully to set bmc ntp successful",$response.StatusCode) 
         }

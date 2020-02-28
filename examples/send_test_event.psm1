@@ -49,7 +49,7 @@ function send_test_event
     param
     (
     [Parameter(Mandatory=$False)]
-    [string]$eventid = "40000001",
+    [string]$eventid = "99",
     [Parameter(Mandatory=$False)]
     [string]$message = "test event",
     [ValidateSet("OK","Warning","Critical")]
@@ -103,23 +103,101 @@ function send_test_event
         $event_url = "https://$ip" + $converted_object.EventService."@odata.id"
         $response = Invoke-WebRequest -Uri $event_url -Headers $JsonHeader -Method Get -UseBasicParsing 
         $converted_object =$response.Content | ConvertFrom-Json
-        
+
         #Get send test action url
-        $send_event_url = "https://$ip" + $converted_object.Actions."#EventService.SubmitTestEvent".target
+        $JsonBody = @{}
+        $EventService_version = [int]((($converted_object."@odata.type".split(".")[-2]).replace("_","")).replace("v",""))
         $timestamp = Get-Date -Format 'yyyy-MM-ddTHH:mm:ss+08:00'
-        $JsonBody = @{"EventId"=$eventid
-                      "EventTimestamp" = $timestamp
-                      "Message" = $message
-                      "MessageArgs" = @()
-                      "MessageId"="Base.1.1.GeneralError"
-                      "Severity"= $severity
-                      "OriginOfCondition"="/redfish/v1/Systems/1/LogServices/StandardLog"}|ConvertTo-Json -Compress
-       $response = Invoke-WebRequest -Uri $send_event_url -Method Post -Headers $JsonHeader -Body $JsonBody -ContentType 'application/json'
+        $send_event_url = "https://$ip" + $converted_object.Actions."#EventService.SubmitTestEvent".target
+        $test_event_actioninfo = $converted_object.Actions."#EventService.SubmitTestEvent"."@Redfish.ActionInfo"
+        if($test_event_actioninfo)
+        {
+            $test_event_actioninfo_url = "https://$ip" + $test_event_actioninfo
+            $response = Invoke-WebRequest -Uri $test_event_actioninfo_url -Headers $JsonHeader -Method Get -UseBasicParsing 
+            $converted_object = $response.Content | ConvertFrom-Json
+            $test_event_parameters = $converted_object.Parameters
+
+            foreach($parameter in $test_event_parameters)
+            {
+                if(($Null -ne $parameter.Required) -and ($True -eq $parameter.Required))
+                {
+                    if($parameter.Name -eq "EventId")
+                    {
+                        $JsonBody["EventId"] = $eventid
+                    }
+                    if($parameter.Name -eq "EventTimestamp")
+                    {
+                        $JsonBody["EventTimestamp"] = $timestamp
+                    }
+                    if($parameter.Name -eq "MessageArgs")
+                    {
+                        $JsonBody["MessageArgs"] = @()
+                    }
+                    if($parameter.Name -eq "MessageId")
+                    {
+                        $JsonBody["MessageId"] = "Created"
+                    }
+                    if($parameter.Name -eq "OriginOfCondition")
+                    {
+                        $JsonBody["OriginOfCondition"] = "/redfish/v1/EventService"
+                    }
+                    if($parameter.Name -eq "Severity")
+                    {
+                        $JsonBody["Severity"] = "OK"
+                    }
+                    if($parameter.Name -eq "EventType")
+                    {
+                        $JsonBody["EventType"] = "Alert"
+                    }
+                }
+            }
+        }
+        elseif($EventService_version -ge 130)
+        {
+            $JsonBody = @{
+                "EventId" = $eventid
+                "EventTimestamp" = $timestamp
+                "Message" = $message
+                "MessageArgs" = @()
+                "MessageId"="Created"
+                "Severity"= $severity
+                "OriginOfCondition"="/redfish/v1/EventService"
+            }
+        }
+        elseif($EventService_version -ge 106)
+        {
+            $JsonBody = @{
+                "EventType" = "Alert"
+                "EventId"= $eventid
+                "EventTimestamp" = $timestamp
+                "Message" = $message
+                "MessageArgs" = @()
+                "MessageId"="Created"
+                "Severity"= $severity
+                "OriginOfCondition"="/redfish/v1/EventService"
+            }
+        }
+        else
+        {
+            $JsonBody = @{
+                "EventType" = "Alert"
+                "EventId"= $eventid
+                "EventTimestamp" = $timestamp
+                "Message" = $message
+                "MessageArgs" = @()
+                "MessageId"="Created"
+                "Severity"= $severity
+            }
+        }
+
+        $JsonBody = $JsonBody |ConvertTo-Json -Compress
+
+       $response = Invoke-WebRequest -Uri $send_event_url -Method Post -Headers $JsonHeader -Body $JsonBody  -ContentType 'application/json'
        Write-Host
                 [String]::Format("- PASS, statuscode {0} returned successfully to send test event
                                    event id is{1},EventType:Alert,EventTimestamp:{2},
-                                   Message:{3},MessageArgs:[],MessageId:Base.1.1.GeneralError,Severity:{4},OriginOfCondition:/redfish/v1/Systems/1/LogServices/StandardLog",
-                                   $response.StatusCode,$eventid,$timestamp,$message,$severity)
+                                   Message:{3},MessageArgs:[],MessageId:Created,Severity:{4},OriginOfCondition:{5}",
+                                   $response.StatusCode,$eventid,$timestamp,$message,$severity,$event_url)
         return $True
     }
     catch

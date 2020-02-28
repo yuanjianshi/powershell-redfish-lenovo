@@ -37,11 +37,12 @@ function set_bios_password{
     - username: Pass in BMC username
     - password: Pass in BMC username password
     - bios_password_name: Pass in BIOS password name
-    - bios_password: Pass in BIOS password
+    - bios_old_password: Pass in old BIOS password
+    - bios_new_password: Pass in new BIOS password
     - system_id: Pass in System resource instance id(none: first instance, all: all instances)
     - config_file: Pass in configuration file path, default configuration file is config.ini
    .EXAMPLE
-    set_bios_password -ip 10.10.10.10 -username USERID -password PASSW0RD -bios_password_name XXX -bios_password XXX
+    set_bios_password -ip 10.10.10.10 -username USERID -password PASSW0RD -bios_password_name XXX -bios_old_password XXX -bios_new_password XXX
    #>
    
     param(
@@ -51,10 +52,12 @@ function set_bios_password{
         [string]$username="",
         [Parameter(Mandatory=$False)]
         [string]$password="",
-        [Parameter(Mandatory=$False)]
+        [Parameter(Mandatory=$True)]
         [string]$bios_password_name="",
         [Parameter(Mandatory=$False)]
-        [string]$bios_password="",
+        [string]$bios_old_password="",
+        [Parameter(Mandatory=$True)]
+        [string]$bios_new_password="",
         [Parameter(Mandatory=$False)]
         [string]$system_id="None",
         [Parameter(Mandatory=$False)]
@@ -128,10 +131,35 @@ function set_bios_password{
             $temp = $hash_table."Actions"."#Bios.ChangePassword"."target"
             $uri_set_bios_password = "https://$ip"+ $temp
 
-            $JsonBody = @{ 
-                "PasswordName" = $bios_password_name
-                "NewPassword" = $bios_password
-                } | ConvertTo-Json -Compress
+            # fix Old password parameter requirement on AMD 1P 2020/2/24
+            $temp = $hash_table."Actions"."#Bios.ChangePassword"."@Redfish.ActionInfo"
+            $uri_change_bios_password_actioninfo = "https://$ip"+ $temp
+
+            $response = Invoke-WebRequest -Uri $uri_change_bios_password_actioninfo -Headers $JsonHeader -Method Get -UseBasicParsing
+
+            $converted_object = $response.Content | ConvertFrom-Json
+            $hash_table = @{}
+            $converted_object.psobject.properties | Foreach { $hash_table[$_.Name] = $_.Value }
+
+            foreach ($item in $hash_table.Parameters)
+            {
+                if($item.Name -eq "OldPassword")
+                {
+                    $JsonBody = @{ 
+                        "PasswordName" = $bios_password_name
+                        "NewPassword" = $bios_new_password
+                        "OldPassword" = $bios_old_password
+                        } | ConvertTo-Json -Compress
+                    break
+                }
+                else
+                {
+                    $JsonBody = @{ 
+                        "PasswordName" = $bios_password_name
+                        "NewPassword" = $bios_new_password
+                        } | ConvertTo-Json -Compress    
+                }
+            }
             
             $response = Invoke-WebRequest -Uri $uri_set_bios_password -Headers $JsonHeader -Method Post -Body $JsonBody -ContentType 'application/json'            
 

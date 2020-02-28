@@ -151,24 +151,25 @@ function set_serial_interfaces
             $converted_object = $response.Content | ConvertFrom-Json
             $hash_table = @{}
             $converted_object.psobject.properties | Foreach { $hash_table[$_.Name] = $_.Value }
+            $etag = $hash_table."@odata.etag"
 
-            if ($null -ne $hash_table."@odata.etag")
+            if($etag -ne $null)
             {
-                $etag = $hash_table."@odata.etag"
+                $JsonHeader = @{ "If-Match" = $etag
+                            "X-Auth-Token" = $session_key
+                }
             }
             else
             {
-                $etag = ""
+                $JsonHeader = @{ "If-Match" = ""
+                            "X-Auth-Token" = $session_key
+                }
             }
-            $JsonHeader["If-Match"] = $etag
 
             if($null -eq $hash_table.BitRate)
             {
                 Write-Host "The specified Interface Id {0} has no BitRate property, not valid.",$hash_table.Id
             }
-
-            $hash_table."@odata.etag"
-            $hash_table.BitRate
 
             $body = @{}
             # Build body for set serial interfaces properties value

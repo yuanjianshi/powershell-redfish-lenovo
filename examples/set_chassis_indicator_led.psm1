@@ -114,34 +114,34 @@ function set_chassis_indicator_led
             # Get chassis url from the chassis url collection
             $uri_address_chassis = "https://$ip"+$chassis_url_string
 
+            # Get the chassis url collection via Invoke-WebRequest
+            $response = Invoke-WebRequest -Uri $uri_address_chassis -Headers $JsonHeader -Method Get -UseBasicParsing 
+            $converted_object = $response.Content | ConvertFrom-Json
+            $hash_table = @{}
+            $converted_object.psobject.properties | Foreach { $hash_table[$_.Name] = $_.Value }
+
+            # get etag to set If-Match precondition in header
+            if($converted_object."@odata.etag" -ne $null)
+            {
+                $JsonHeader = @{ "If-Match" = $converted_object."@odata.etag"
+                            "X-Auth-Token" = $session_key
+                            "Content-Type" = "application/json"
+                }
+            }
+            else
+            {
+                $JsonHeader = @{ "If-Match" = ""
+                                "X-Auth-Token" = $session_key
+                                "Content-Type" = "application/json"
+                }
+            }
+
             # Build request body and send requests to set LED status
             $body = @{"IndicatorLED"=$led_status}
             $json_body = $body | convertto-json
-            try
-            {
-                $response = Invoke-WebRequest -Uri $uri_address_chassis -Headers $JsonHeader -Method Patch  -Body $json_body -ContentType 'application/json'
-            }
-            catch
-            {
-                # Handle http exception response for Post request
-                if ($_.Exception.Response)
-                {
-                    Write-Host "Error occured, status code:" $_.Exception.Response.StatusCode.Value__
-                    if($_.ErrorDetails.Message)
-                    {
-                        $response_j = $_.ErrorDetails.Message | ConvertFrom-Json | Select-Object -Expand error
-                        $response_j = $response_j | Select-Object -Expand '@Message.ExtendedInfo'
-                        Write-Host "Error message:" $response_j.Resolution
-                    }
-                }
-                # Handle system exception response for Post request
-                elseif($_.Exception)
-                {
-                    Write-Host "Error message:" $_.Exception.Message
-                    Write-Host "Please check arguments or server status."
-                }
-                return $False 
-            }
+
+            $response = Invoke-WebRequest -Uri $uri_address_chassis -Headers $JsonHeader -Method Patch  -Body $json_body -ContentType 'application/json'
+
             Write-Host
             [String]::Format("- PASS, statuscode {0} returned successfully to set led {1}",$response.StatusCode, $led_status)
             return $True

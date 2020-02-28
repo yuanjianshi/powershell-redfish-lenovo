@@ -109,6 +109,7 @@ function set_bios_bootmode_uefi
 
             # Get boot mode from bios attributes
             $converted_object = $response_bios_url.Content | ConvertFrom-Json
+            $etag = $converted_object."@odata.etag"
             $hash_table = @{}
             $converted_object.psobject.properties | Foreach { $hash_table[$_.Name] = $_.Value }
             if($hash_table.Attributes."BootMode")
@@ -119,9 +120,12 @@ function set_bios_bootmode_uefi
             {
                 $attribute_name = "SystemBootMode"
             }
-            else
+            elseif($hash_table.Attributes."BootModes_SystemBootMode")
             {
                 $attribute_name = "BootModes_SystemBootMode"
+            }
+            else {
+                $attribute_name = "Q00001 Boot Mode"
             }
 
             # Get boot mode setting guide from bios registry
@@ -163,35 +167,26 @@ function set_bios_bootmode_uefi
 
             # Build request body and send requests to set BIOS bootmode
             $pending_url = "https://$ip"+$hash_table."@Redfish.Settings"."SettingsObject"."@odata.id"
+
+            # get etag to set If-Match precondition in header
+            if($etag -ne $null)
+            {
+                $JsonHeader = @{ "If-Match" = "*"
+                            "X-Auth-Token" = $session_key
+                }
+            }
+            else
+            {
+                $JsonHeader = @{ "If-Match" = ""
+                            "X-Auth-Token" = $session_key
+                }
+            }
+            
             $JsonBody = @{ Attributes = @{
                 "$attribute_name"=$ValueName
                 }} | ConvertTo-Json -Compress
 
-            try
-            {
-                $response = Invoke-WebRequest -Uri $pending_url -Headers $JsonHeader -Method Patch  -Body $JsonBody -ContentType 'application/json'
-            }
-            catch
-            {
-                # Handle http exception response for Patch request
-                if ($_.Exception.Response)
-                {
-                    Write-Host "Error occured, status code:" $_.Exception.Response.StatusCode.Value__
-                    if($_.ErrorDetails.Message)
-                    {
-                        $response_j = $_.ErrorDetails.Message | ConvertFrom-Json | Select-Object -Expand error
-                        $response_j = $response_j | Select-Object -Expand '@Message.ExtendedInfo'
-                        Write-Host "Error message:" $response_j.Resolution
-                    }
-                }
-                # Handle system exception response for Post request
-                elseif($_.Exception)
-                {
-                    Write-Host "Error message:" $_.Exception.Message
-                    Write-Host "Please check arguments or server status."
-                }
-                return $False
-            }
+            $response = Invoke-WebRequest -Uri $pending_url -Headers $JsonHeader -Method Patch  -Body $JsonBody -ContentType 'application/json'
 
             Write-Host
             [String]::Format("- PASS, statuscode {0} returned successfully to set bios bootmode uefi. WarningText: {1}",$response.StatusCode, $WarningText)

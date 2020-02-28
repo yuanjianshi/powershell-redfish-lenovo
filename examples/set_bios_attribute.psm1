@@ -98,14 +98,12 @@ function set_bios_attribute
         $session_location = $session.Location
 
         #build headers with sesison key for authentication
-        $JsonHeader = @{ "X-Auth-Token" = $session_key
-        }
-        
+        $JsonHeader = @{ "X-Auth-Token" = $session_key}
+
         # get the system url collection
         $system_url_collection = @()
         $system_url_collection = get_system_urls -bmcip $ip -session $session -system_id $system_id
 
-        
         # loop all System resource instance in $system_url_collection
         foreach ($system_url_string in $system_url_collection)
         {
@@ -127,6 +125,7 @@ function set_bios_attribute
             $response = Invoke-WebRequest -Uri $uri_address_Bios -Headers $JsonHeader -Method Get -UseBasicParsing
 
             $converted_object = $response.Content | ConvertFrom-Json
+            $etag = $converted_object."@odata.etag"
             $hash_table = @{}
             $converted_object.psobject.properties | Foreach { $hash_table[$_.Name] = $_.Value }
                    
@@ -136,6 +135,19 @@ function set_bios_attribute
             if ($attribute_value -match "^[\d\.]+$")
             {
                 $attribute_value = [int]$attribute_value
+            }
+
+            if($etag -ne $null)
+            {
+                $JsonHeader = @{ "If-Match" = "*"
+                            "X-Auth-Token" = $session_key
+                }
+            }
+            else
+            {
+                $JsonHeader = @{ "If-Match" = ""
+                            "X-Auth-Token" = $session_key
+                }
             }
 
             $JsonBody = @{ Attributes = @{

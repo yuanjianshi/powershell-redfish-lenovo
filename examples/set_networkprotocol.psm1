@@ -123,6 +123,7 @@ function set_networkprotocol
             # Get the network protocol url
             $response = Invoke-WebRequest -Uri $uri_address_manager -Headers $JsonHeader -Method Get -UseBasicParsing
             $converted_object = $response.Content | ConvertFrom-Json
+            $etag = $converted_object."@odata.etag"
             $uri_network_protocol ="https://$ip" + $converted_object.NetworkProtocol."@odata.id"
 
             if($enabled -eq 1)
@@ -137,6 +138,20 @@ function set_networkprotocol
             {
                 Write-Host "The parameter enabled only supported disable(0) or enable(1) the BMC service."
             }
+            
+            if($etag -ne $null)
+            {
+                $JsonHeader = @{ "If-Match" = "*"
+                            "X-Auth-Token" = $session_key
+                }
+            }
+            else
+            {
+                $JsonHeader = @{ "If-Match" = ""
+                            "X-Auth-Token" = $session_key
+                }
+            }
+
             # Build request body for modify network protocol
             if("IPMI", "SSDP" -contains $service)
             {

@@ -110,7 +110,10 @@ function get_secure_boot_status
             $response = Invoke-WebRequest -Uri $secure_boot_url -Headers $JsonHeader -Method Get -UseBasicParsing
             $converted_object = $response.Content | ConvertFrom-Json
             $ht_secure["SecureBootEnable"] = $converted_object.SecureBootEnable
-            $ht_secure["SecureBootMode"] = $converted_object.SecureBootMode
+            if( $Null -ne $converted_object.SecureBootMode)
+            {
+                $ht_secure["SecureBootMode"] = $converted_object.SecureBootMode
+            }
             
             # Output result
             ConvertOutputHashTableToObject $ht_secure
